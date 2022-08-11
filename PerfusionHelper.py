@@ -24,9 +24,9 @@ class PerfusionHelper(ScriptedLoadableModule):
             "PerfusionHelper"  # TODO: make this more human readable by adding spaces
         )
         self.parent.categories = ["MikeTools"]
-        self.parent.dependencies = (
-            []
-        )  # TODO: add here list of module names that this module requires
+        self.parent.dependencies = [
+            "Elastix"
+        ]  # TODO: add here list of module names that this module requires
         self.parent.contributors = [
             "Mike Bindschadler (Seattle Children's Hospital)"
         ]  #
@@ -150,12 +150,52 @@ class PerfusionHelperWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
-        self.ui.inputSelector.connect(
+        self.ui.GatherTagsInputSequenceSelector.connect(
             "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.InputRegisteredSequenceSelector.connect(
+            "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.OutputRegisteredSequenceSelector.connect(
+            "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.T1RegSequenceInputSelector.connect(
+            "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.T1RegT1Selector.connect(
+            "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.TransferTagsInputSequenceSelector.connect(
+            "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.TransferTagsDestinationSequenceSelector.connect(
+            "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.T1RegOutputTransformSelector.connect(
+            "currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI
+        )
+        self.ui.RegistrationStrategyComboBox.connect(
+            "currentIndexChanged(int)", self.updateParameterNodeFromGUI
+        )
+        self.ui.HardenTransformCheckBox.connect(
+            "stateChanged(int)", self.updateParameterNodeFromGUI
         )
 
         # Buttons
-        self.ui.applyButton.connect("clicked(bool)", self.onApplyButton)
+        self.ui.GatherTagsFromDICOMButton.connect(
+            "clicked(bool)", self.onGatherTagsFromDICOMButtonClick
+        )
+        self.ui.TransferTagsButton.connect(
+            "clicked(bool)", self.onTransferTagsButtonClick
+        )
+        self.ui.RunSequenceRegistrationButton.connect(
+            "clicked(bool)", self.onRunSequenceRegistrationButtonClick
+        )
+        self.ui.RegisterT1Button.connect("clicked(bool)", self.onRegisterT1ButtonClick)
+
+        # Initialize registration strategy choice combobox
+        self.ui.RegistrationStrategyComboBox.clear()
+        self.ui.RegistrationStrategyComboBox.addItems(["BRAINS", "Elastix"])
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
@@ -208,15 +248,7 @@ class PerfusionHelperWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         self.setParameterNode(self.logic.getParameterNode())
 
-        # Select default input nodes if nothing is selected yet to save a few clicks for the user
-        if not self._parameterNode.GetNodeReference("InputVolume"):
-            firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass(
-                "vtkMRMLScalarVolumeNode"
-            )
-            if firstVolumeNode:
-                self._parameterNode.SetNodeReferenceID(
-                    "InputVolume", firstVolumeNode.GetID()
-                )
+        # Any automatic initialization could go here (auto-selecting nodes from the scene, for example)
 
     def setParameterNode(self, inputParameterNode):
         """
@@ -259,20 +291,96 @@ class PerfusionHelperWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
         self._updatingGUIFromParameterNode = True
 
-        # Update node selectors and sliders
-        self.ui.inputSelector.setCurrentNode(
-            self._parameterNode.GetNodeReference("InputVolume")
+        pn = self._parameterNode
+        ## Update node selectors and sliders
+        self.ui.GatherTagsInputSequenceSelector.setCurrentNode(
+            pn.GetNodeReference("GatherTagsInputSequence")
+        )
+        self.ui.InputRegisteredSequenceSelector.setCurrentNode(
+            pn.GetNodeReference("InputRegisteredSequence")
+        )
+        self.ui.OutputRegisteredSequenceSelector.setCurrentNode(
+            pn.GetNodeReference("OutputRegisteredSequence")
+        )
+        self.ui.T1RegSequenceInputSelector.setCurrentNode(
+            pn.GetNodeReference("T1RegSequenceInput")
+        )
+        self.ui.T1RegT1Selector.setCurrentNode(pn.GetNodeReference("T1Node"))
+        self.ui.T1RegBrainMaskSelector.setCurrentNode(
+            pn.GetNodeReference("T1BrainMask")
+        )
+        self.ui.T1RegOutputTransformSelector.setCurrentNode(
+            pn.GetNodeReference("T1RegTransform")
+        )
+        self.ui.TransferTagsInputSequenceSelector.setCurrentNode(
+            pn.GetNodeReference("TransferTagsInputSequence")
+        )
+        self.ui.TransferTagsDestinationSequenceSelector.setCurrentNode(
+            pn.GetNodeReference("TransferTagsDestinationSequence")
         )
 
-        # Update buttons states and tooltips
-        if self._parameterNode.GetNodeReference("InputVolume"):
-            self.ui.applyButton.toolTip = "Apply tags to input sequence"
-            self.ui.applyButton.enabled = True
+        ##  Update buttons states and tooltips
+        # Gather tags section
+        if self._parameterNode.GetNodeReference("GatherTagsInputSequence"):
+            self.ui.GatherTagsFromDICOMButton.toolTip = (
+                "Gather and apply perfusion tags to input sequence"
+            )
+            self.ui.GatherTagsFromDICOMButton.enabled = True
         else:
-            self.ui.applyButton.toolTip = (
+            self.ui.GatherTagsFromDICOMButton.toolTip = (
                 "Select input image volume sequence to enable tagging"
             )
-            self.ui.applyButton.enabled = False
+            self.ui.GatherTagsFromDICOMButton.enabled = False
+        # Sequence registration section
+        if pn.GetNodeReference("InputRegisteredSequence"):
+            self.ui.RunSequenceRegistrationButton.toolTip = (
+                "Run sequence registration using default rigid registration settings"
+            )
+            self.ui.RunSequenceRegistrationButton.enabled = True
+        else:
+            self.ui.RunSequenceRegistrationButton.toolTip = (
+                "Select sequence to register to enable registration"
+            )
+            self.ui.RunSequenceRegistrationButton.enabled = False
+        # Transfer tags section
+        if pn.GetNodeReference("TransferTagsInputSequence") and pn.GetNodeReference(
+            "TransferTagsDestinationSequence"
+        ):
+            self.ui.TransferTagsButton.toolTip = (
+                "Transfer all attribute tags from source to destination"
+            )
+            self.ui.TransferTagsButton.enabled = True
+        else:
+            self.ui.TransferTagsButton.toolTip = (
+                "Select both source and destination sequences to enable tag transfer"
+            )
+            self.ui.TransferTagsButton.enabled = False
+        # T1 registration section
+        if pn.GetNodeReference("T1Node") and pn.GetNodeReference("T1RegSequenceInput"):
+            self.ui.RegisterT1Button.toolTip = "Register T1 to first frame of sequence"
+            self.ui.RegisterT1Button.enabled = True
+        else:
+            self.ui.RegisterT1Button.toolTip = (
+                "Select a T1 and an image sequence to enable registration"
+            )
+            self.ui.RegisterT1Button.enabled = False
+
+        ## Registration strategy combobox
+        strategyOptionsList = [
+            self.ui.RegistrationStrategyComboBox.itemText(idx)
+            for idx in range(self.ui.RegistrationStrategyComboBox.count)
+        ]
+        if pn.GetParameter("RegistrationStrategy") in strategyOptionsList:
+            newIdx = strategyOptionsList.index(pn.GetParameter("RegistrationStrategy"))
+            self.ui.RegistrationStrategyComboBox.setCurrentIndex(newIdx)
+        else:
+            self.ui.RegistrationStrategyComboBox.setCurrentIndex(0)
+            raise Exception("Unknown registration strategy %s in parameter node!")
+
+        ## Checkbox
+        self.ui.HardenTransformCheckBox.checked = (
+            pn.GetParameter("HardenTransformChecked") == "1"
+        )
 
         # All the GUI updates are done
         self._updatingGUIFromParameterNode = False
@@ -289,15 +397,120 @@ class PerfusionHelperWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         wasModified = (
             self._parameterNode.StartModify()
         )  # Modify all properties in a single batch
+        pn = self._parameterNode
 
-        self._parameterNode.SetNodeReferenceID(
-            "InputVolume", self.ui.inputSelector.currentNodeID
+        # Checkbox
+        pn.SetParameter(
+            "HardenTransformChecked",
+            "1" if self.ui.HardenTransformCheckBox.checked else "0",
+        )
+
+        # Set node references from selectors
+        pn.SetNodeReferenceID(
+            "GatherTagsInputSequence",
+            self.ui.GatherTagsInputSequenceSelector.currentNodeID,
+        )
+        pn.SetNodeReferenceID(
+            "InputRegisteredSequence",
+            self.ui.InputRegisteredSequenceSelector.currentNodeID,
+        )
+        pn.SetNodeReferenceID(
+            "OutputRegisteredSequence",
+            self.ui.OutputRegisteredSequenceSelector.currentNodeID,
+        )
+        pn.SetNodeReferenceID(
+            "T1RegSequenceInput", self.ui.T1RegSequenceInputSelector.currentNodeID
+        )
+        pn.SetNodeReferenceID("T1Node", self.ui.T1RegT1Selector.currentNodeID)
+        pn.SetNodeReferenceID(
+            "T1BrainMask", self.ui.T1RegBrainMaskSelector.currentNodeID
+        )
+        pn.SetNodeReferenceID(
+            "T1RegTransform", self.ui.T1RegOutputTransformSelector.currentNodeID
+        )
+        pn.SetNodeReferenceID(
+            "TransferTagsInputSequence",
+            self.ui.TransferTagsInputSequenceSelector.currentNodeID,
+        )
+        pn.SetNodeReferenceID(
+            "TransferTagsDestinationSequence",
+            self.ui.TransferTagsDestinationSequenceSelector.currentNodeID,
+        )
+        pn.SetParameter(
+            "RegistrationStrategy", self.ui.RegistrationStrategyComboBox.currentText
         )
 
         self._parameterNode.EndModify(wasModified)
 
+    def onGatherTagsFromDICOMButtonClick(self):
+        """For input sequence, gather perfustion related tags from DICOM header"""
+        seqNode = self.ui.GatherTagsInputSequenceSelector.currentNode()
+        if not seqNode:
+            slicer.util.errorDisplay("No input sequence selected!")
+
+        errorCode, errorMsg = self.logic.gatherTagsFromDICOMTag(seqNode)
+        if errorCode > 0:
+            slicer.util.errorDisplay(errorMsg)
+            raise Exception(errorMsg)
+
+    def onTransferTagsButtonClick(self):
+        """Transfer all attributes from source to destination node"""
+        sourceNode = self.ui.TransferTagsInputSequenceSelector.currentNode()
+        destNode = self.ui.TransferTagsDestinationSequenceSelector.currentNode()
+        self.logic.transferTags(sourceNode, destNode)
+        slicer.util.infoDisplay("Tags successfully transferred!")
+
+    def onRunSequenceRegistrationButtonClick(self):
+        """Run sequence registration using "generic rigid (all)" preset"""
+        inputSequence = self.ui.InputRegisteredSequenceSelector.currentNode()
+        outputSequence = self.ui.OutputRegisteredSequenceSelector.currentNode()
+        if outputSequence is None:
+            outSeqName = slicer.mrmlScene.GenerateUniqueName("RegisteredSequence")
+            outputSequence = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLSequenceNode", outSeqName
+            )
+            self.ui.OutputRegisteredSequenceSelector.setCurrentNode(outputSequence)
+        outputTransformSequence = None  # TODO add selector for this
+        outputs = self.logic.runSequenceRegistration(
+            inputSequence, outputSequence, outputTransformSequence
+        )
+        # Announce when finished
+        slicer.util.infoDisplay("Sequence registration finished!")
+        # Transfer tags to registered version
+        self.logic.transferTags(inputSequence, outputSequence)
+        # Set the output as the suggested sequence for T1 registration
+        self._parameterNode.SetNodeReferenceID(
+            "T1RegSequenceInput", outputSequence.GetID()
+        )
+
+    def onRegisterT1ButtonClick(self):
+        """Do rigid registration of T1 to current frame of sequence"""
+        T1node = self.ui.T1RegT1Selector.currentNode()
+        seqNode = self.ui.T1RegSequenceInputSelector.currentNode()
+        brainMaskNode = self.ui.T1RegBrainMaskSelector.currentNode()
+        outputTransformNode = self.ui.T1RegOutputTransformSelector.currentNode()
+        strategy = self.ui.RegistrationStrategyComboBox.currentText
+        outputTransformNode = self.logic.registerT1ToSequence(
+            T1node, seqNode, brainMaskNode, outputTransformNode, strategy
+        )
+        # Set output transform node (in case it was just created)
+        self._parameterNode.SetNodeReferenceID(
+            "T1RegTransform", outputTransformNode.GetID()
+        )
+        # Apply transform to T1 node and brain mask
+        T1node.SetAndObserveTransformNodeID(outputTransformNode.GetID())
+        if brainMaskNode:
+            brainMaskNode.SetAndObserveTransformNodeID(outputTransformNode.GetID())
+        # Harden transform if requested
+        if self.ui.HardenTransformCheckBox.checked:
+            T1node.HardenTransform()
+            if brainMaskNode:
+                brainMaskNode.HardenTransform()
+        self.updateGUIFromParameterNode()
+
     def onApplyButton(self):
         """
+        VESTIGAL!
         Run processing when user clicks "Apply" button.
         """
         with slicer.util.tryWithErrorDisplay(
@@ -328,33 +541,93 @@ class PerfusionHelperLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
+        # Set to delete temporary files created during elastix registration
+        self.deleteTempElastixFiles = False  # TODO: change to true when working!
 
     def setDefaultParameters(self, parameterNode):
         """
         Initialize parameter node with default settings.
         """
+        if not parameterNode.GetParameter("RegistrationStrategy"):
+            parameterNode.SetParameter("RegistrationStrategy", "BRAINS")
         # if not parameterNode.GetParameter("Threshold"):
         #     parameterNode.SetParameter("Threshold", "100.0")
         # if not parameterNode.GetParameter("Invert"):
         #     parameterNode.SetParameter("Invert", "false")
         pass
 
-    def process(self, inputSequenceNode):
-        """
-        Run the processing algorithm.
-        Can be used without GUI widget.
-        :param inputVolume: volume to be thresholded
-        :param outputVolume: thresholding result
-        :param imageThreshold: values above/below this threshold will be set to 0
-        :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-        :param showResult: show output volume in slice viewers
-        """
-        seqNode = inputSequenceNode
+    def runSequenceRegistration(
+        self, inputSequence, outputSequence, outputTransformSequence=None
+    ):
+        """ """
+        generic_rigid_preset_idx = 1
+        import SequenceRegistration
+
+        seqRegLogic = SequenceRegistration.SequenceRegistrationLogic()
+        seqRegLogic.registerVolumeSequence(
+            inputSequence,
+            outputSequence,
+            outputTransformSequence,
+            fixedVolumeItemNumber=0,
+            computeMovingToFixedTransform=True,
+            presetIndex=generic_rigid_preset_idx,
+            startFrameIndex=0,
+            endFrameIndex=None,
+        )
+        pass
+
+    def registerT1ToSequence(
+        self, T1node, seqNode, brainMaskNode, outputTransformNode, strategy
+    ):
+        """ """
         # Get proxy node for desired sequence node
         browserNode = (
             slicer.modules.sequences.logic().GetFirstBrowserNodeForSequenceNode(seqNode)
         )
         proxNode = browserNode.GetProxyNode(seqNode)
+        fixedVolumeMask = None  # no mask on sequence
+        if strategy == "BRAINS":
+            outputTransformNode = self.runBrainsRegistration(
+                proxNode, T1node, outputTransformNode
+            )
+        elif strategy == "Elastix":
+            outputTransformNode = self.runElastixRegistration(
+                proxNode,
+                T1node,
+                fixedVolumeMask,
+                brainMaskNode,
+                outputTransformNode,
+                prealigned=True,
+            )
+        return outputTransformNode
+
+    def transferTags(self, sourceNode, destNode):
+        """Transfer all attributes from source node to destination node"""
+        for attrName in sourceNode.GetAttributeNames():
+            destNode.SetAttribute(attrName, sourceNode.GetAttribute(attrName))
+
+    def gatherTagsFromDICOMTag(self, inputSequenceNode):
+        """
+        Gather perfusion-related tags needed by DSCMRIAnalysis module based by getting header
+        from instance UID and add them as attributes to the input sequence node.
+        If  there is no instance UID attribute for this sequence, return an error code!
+
+        """
+        seqNode = inputSequenceNode
+        if seqNode is None:
+            errorCode, errorMsg = (1, "Input sequence is None!")
+            return errorCode, errorMsg
+        # Get proxy node for desired sequence node
+        browserNode = (
+            slicer.modules.sequences.logic().GetFirstBrowserNodeForSequenceNode(seqNode)
+        )
+        proxNode = browserNode.GetProxyNode(seqNode)
+        if not "DICOM.instanceUIDs" in proxNode.GetAttributeNames():
+            errorCode, errorMsg = (
+                2,
+                "Image volumes in sequence do not have 'DICOM.instanceUIDs as attributes! Cannot retrieve other tag data without a reference to the DICOM header!",
+            )
+            return errorCode, errorMsg
         # Get sop instance UIDs list from sequence proxy node attribute
         instUIDs = proxNode.GetAttribute("DICOM.instanceUIDs").split()
         # Get first DICOM file name and location from Slicer's DICOM database
@@ -382,6 +655,8 @@ class PerfusionHelperLogic(ScriptedLoadableModuleLogic):
             "MultiVolume.FrameIdentifyingDICOMTagName", "AcquisitionTime"
         )
 
+        errorCode, errorMsg = (0, "")
+
         slicer.util.messageBox(
             "Perfusion tags successfully applied to volume sequence!"
         )
@@ -393,6 +668,254 @@ class PerfusionHelperLogic(ScriptedLoadableModuleLogic):
         #
         # stopTime = time.time()
         # logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
+        return errorCode, errorMsg
+
+    def newNode(self, nodeClass, baseNodeName):
+        # Convenience function for repeated code used for generating unique names
+        # AddNewNodeByClass is supposed to do this according to the docs, but it doesn't
+        nodeName = slicer.mrmlScene.GenerateUniqueName(baseNodeName)
+        node = slicer.mrmlScene.AddNewNodeByClass(nodeClass, nodeName)
+        return node
+
+    def runBrainsRegistration(self, fixed, moving, outputTransform=None):
+        """Run registration without any fancy stuff, assuming a fairly close match between volumes."""
+        if outputTransform is None:
+            outputTransform = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLLinearTransformNode",
+                "_".join([fixed.GetName(), "to", moving.GetName(), "Transform"]),
+            )
+        parameters = {
+            "fixedVolume": fixed,
+            "movingVolume": moving,
+            "samplingPercentage": 0.01,
+            "linearTransform": outputTransform,
+            "initializeTransformMode": "Off",  # assumes already close in physical space
+            "useRigid": True,
+        }
+        slicer.cli.runSync(slicer.modules.brainsfit, None, parameters=parameters)
+        return outputTransform
+
+    def runElastixRegistration(
+        self,
+        fixedVolumeNode,
+        movingVolumeNode,
+        fixedVolumeMaskNode=None,
+        movingVolumeMaskNode=None,
+        elastixOutputTransform=None,
+        prealigned=False,
+        maskHasFalseHardEdge=False,
+        Scales=None,
+    ):
+        """Run elastix-based registration and output the resulting transform as slicer linear
+        transform node. If mask nodes are supplied, they are used and are not eroded by default. The
+        parameter file used is created on the fly so that the user doesn't have to mess with the xml
+        database file or find any file locations. Optional input flags affect creation of the parameter
+        file:
+        FlagName  --  Values(default)
+        prealigned -- True/(False).  If False, images are centered via AutomaticTransformInitialization with "CenterOfGravity" method
+                      If True, images are not centered, it is instead assumed that they are already close together in physical space
+        maskHasFalseHardEdge -- True/(False). This controls whether ErodeMask is true or false. It has no effect if not
+                                using mask volumes. If there is a false hard edge in either mask, then ErodeMask should be
+                                true so that blurred versions are not influenced by this hard edge. If not, then it's better
+                                to leave the full mask. In our standard use case, I expect the MR mask not to have hard false edges,
+                                so the default is False
+        Scales -- (None) or number.  If None, AutomaticScalesEstimation is used. If a number, then this number is used as the
+                  Scales parameter, which controls how much rotation parameter value changes are considered relative to translation.
+                  Automatic scales seem to fall in the ~7000-9000 range, and lower values allow more exploration of rotation. Manual
+                  suggests never to go below 1000. I found cases where automate scales estimation failed, but 5000 worked well, so this
+                  might be a reasonable thing to try if the auto case fails.
+        """
+        ### Implementation modified from Elastix.py from Elastix module ###
+        if elastixOutputTransform is None:
+            elastixOutputTransform = self.newNode(
+                "vtkMRMLLinearTransformNode", "ElastixOutputTranform"
+            )
+        import Elastix, qt
+
+        elastixLogic = Elastix.ElastixLogic()
+        # Create temporary directory to hold volumes used for Elastix registration and registration results
+        tempDir = elastixLogic.createTempDirectory()
+        # Create inputs subdirectory
+        inputDir = os.path.join(tempDir, "input")
+        qt.QDir().mkpath(inputDir)
+        # Create desired parameter file in this temp directory
+        parameterFilePath = self.createElastixParameterFile(
+            inputDir,
+            prealigned=prealigned,
+            maskHasFalseHardEdge=maskHasFalseHardEdge,
+            Scales=Scales,
+        )
+        # Assemble command line parameters and save copies of inputs to input directory
+        inputParamsElastix = []  # list to hold command line arguments
+        self.addLog("Volume registration is started in working directory: " + tempDir)
+        # Add input volumes
+        inputVolumes = []
+        inputVolumes.append([fixedVolumeNode, "fixed.mha", "-f"])
+        inputVolumes.append([movingVolumeNode, "moving.mha", "-m"])
+        inputVolumes.append([fixedVolumeMaskNode, "fixedMask.mha", "-fMask"])
+        inputVolumes.append([movingVolumeMaskNode, "movingMask.mha", "-mMask"])
+        for [volumeNode, filename, paramName] in inputVolumes:
+            if not volumeNode:
+                continue
+            # Save original file paths
+            originalFilePath = ""
+            originalFilePaths = []
+            volumeStorageNode = volumeNode.GetStorageNode()
+            if volumeStorageNode:
+                originalFilePath = volumeStorageNode.GetFileName()
+                for fileIndex in range(volumeStorageNode.GetNumberOfFileNames()):
+                    originalFilePaths.append(
+                        volumeStorageNode.GetNthFileName(fileIndex)
+                    )
+            # Save to new location
+            filePath = os.path.join(inputDir, filename)
+            slicer.util.saveNode(volumeNode, filePath, {"useCompression": False})
+            inputParamsElastix.append(paramName)
+            inputParamsElastix.append(filePath)
+            # Restore original file paths
+            if volumeStorageNode:
+                volumeStorageNode.ResetFileNameList()
+                volumeStorageNode.SetFileName(originalFilePath)
+                for fileIndex in range(volumeStorageNode.GetNumberOfFileNames()):
+                    volumeStorageNode.AddFileName(originalFilePaths[fileIndex])
+            else:
+                # temporary storage node was created, remove it to restore original state
+                volumeStorageNode = volumeNode.GetStorageNode()
+                slicer.mrmlScene.RemoveNode(volumeStorageNode)
+        # Specify output location
+        resultTransformDir = os.path.join(tempDir, "result-transform")
+        qt.QDir().mkpath(resultTransformDir)
+        inputParamsElastix += ["-out", resultTransformDir]
+        # Specify parameter file
+        inputParamsElastix.append("-p")
+        inputParamsElastix.append(parameterFilePath)
+        # Run the registration!
+        ep = elastixLogic.startElastix(inputParamsElastix)
+        # ep.stdout.close()  # Needed or ep.wait() hangs forever
+        # return_code = ep.wait() # returns when the process ends?
+        elastixLogic.logProcessOutput(
+            ep
+        )  # if I don't do this line, the registration stalls at the start of resolution 0 unless I uncomment and run the previous two lines
+        self.addLog(
+            "\nRegistration complete, transform in:\n   %s" % resultTransformDir
+        )
+        # Import the resulting transform
+        self.importElastixTransform(resultTransformDir, elastixOutputTransform)
+        # Clean up temporary nodes/files
+        if self.deleteTempElastixFiles:
+            import shutil
+
+            shutil.rmtree(tempDir)
+        return elastixOutputTransform
+
+    def importElastixTransform(self, resultTransformDir, outputTransformNode):
+        import Elastix
+
+        elastixLogic = Elastix.ElastixLogic()
+        generalTransformFromParent = vtk.vtkGeneralTransform()
+        transformFileName = (
+            resultTransformDir + "/TransformParameters.0.txt"
+        )  # would need to be adjusted if there were multiple parameters run!!!
+        elastixLogic.readElastixLinearTransformToVTK(
+            transformFileName, generalTransformFromParent
+        )
+        transformFromParentLinear = vtk.vtkTransform()
+        if slicer.vtkMRMLTransformNode.IsGeneralTransformLinear(
+            generalTransformFromParent, transformFromParentLinear
+        ):
+            outputTransformNode.SetMatrixTransformFromParent(
+                transformFromParentLinear.GetMatrix()
+            )
+        else:
+            outputTransformNode.SetAndObserveTransformFromParent(
+                generalTransformFromParent
+            )
+            slicer.util.errorDisplay(
+                "Imported Elastix transform was not linear!  Errors may ensue, because this is not the expected case"
+            )
+        elastixTransformFileImported = True
+
+    def createElastixParameterFile(
+        self, destDir, prealigned=False, maskHasFalseHardEdge=False, Scales=None
+    ):
+        """Create Elastix parameter file from scratch (so we don't have to mess with the XML presets or other things)"""  # TODO: add kwargs type argument to allow arbitrary modifications to the parameters
+        p = {}
+        # Parameters to modify if needed
+        p["NumberOfResolutions"] = 6
+        p[
+            "AutomaticTransformInitializationMethod"
+        ] = "Origins"  # likely to be true for our perfusion images
+        if Scales is None:
+            p["AutomaticScalesEstimation"] = "true"
+        else:
+            p["Scales"] = Scales  # 5000 is a good choice
+        p["NumberOfHistogramBins"] = 64
+        p["MaximumNumberOfIterations"] = 1000
+        p["NumberOfSpatialSamples"] = 3000
+        if prealigned:
+            p["AutomaticTransformInitialization"] = "false"
+        else:
+            p["AutomaticTransformInitialization"] = "true"
+        # Only relevant if using mask
+        if maskHasFalseHardEdge:
+            # If the mask abuts a false hard edge contained in an image (e.g. T1_cut or CT resampled, where there might be a false edge internal to the image)
+            # then the mask should be eroded in blurred or downsampled images to avoid having the bad edge influence the registration
+            p["ErodeMask"] = "true"
+        else:
+            # If there is no hard false edge in the image or if it is far from the mask ROI, then it is better
+            # not to erode the mask
+            p["ErodeMask"] = "false"
+        #
+
+        # This is the default image pyramid schedule for 6 resolutions
+        # p['ImagePyramidSchedule'] = '32 32 32  16 16 16  8 8 8  4 4 4  2 2 2  1 1 1'
+
+        # Standard parameters which shouldn't need to be modified
+        p["FixedInternalImagePixelType"] = "float"
+        p["MovingInternalImagePixelType"] = "float"
+        p["Registration"] = "MultiResolutionRegistration"
+        p["Interpolator"] = "LinearInterpolator"
+        p["ResampleInterpolator"] = "FinalBSplineInterpolator"
+        p["FinalBSplineInterpolationOrder"] = 3
+        p["Resampler"] = "DefaultResampler"
+        p["FixedImagePyramid"] = "FixedSmoothingImagePyramid"
+        p["MovingImagePyramid"] = "MovingSmoothingImagePyramid"
+        p["Optimizer"] = "AdaptiveStochasticGradientDescent"
+        p["ASGDParameterEstimationMethod"] = "DisplacementDistribution"
+        p["Transform"] = "EulerTransform"
+        p["Metric"] = "AdvancedMattesMutualInformation"
+        p["HowToCombineTransforms"] = "Compose"
+        p["NewSamplesEveryIteration"] = "true"
+        p["ImageSampler"] = "RandomCoordinate"
+        p["DefaultPixelValue"] = 0
+        p[
+            "WriteResultImage"
+        ] = "false"  # saves time because I am only extracting the transform
+        p["ResultImagePixelType"] = "short"  # not used because no result image written
+        p["ResultImageFormat"] = "mhd"  # not used because no result image written
+
+        # Modify any other parameters indicated by kwargs here
+
+        # Write the parameter text file
+        import os
+
+        saveFilePath = os.path.join(destDir, "ElastixParameters.txt")
+        with open(saveFilePath, "w") as f:
+            for key, val in p.items():
+                # Convert to string if needed (TODO: what about hierarchies? handle arrays of values or handle string versions of these )
+                if isinstance(val, str):
+                    # Surround with quotes
+                    valStr = '"%s"' % (val)
+                else:
+                    # Convert number to string (without quotes)
+                    valStr = str(val)
+                line = "(%s %s)\n" % (key, valStr)
+                f.write(line)
+        return saveFilePath
+
+    def addLog(self, msg):
+        """Print msg to python window; replaces similar fcn from Elastix.py module"""
+        print(msg)
 
 
 #

@@ -12,7 +12,7 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+    <widget class="ctkCollapsibleButton" name="GatherTagsCB">
      <property name="text">
       <string>Gather Tags From DICOM</string>
      </property>
@@ -25,7 +25,7 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="qMRMLNodeComboBox" name="inputSelector">
+       <widget class="qMRMLNodeComboBox" name="GatherTagsInputSequenceSelector">
         <property name="toolTip">
          <string>Pick the input to the algorithm.</string>
         </property>
@@ -203,14 +203,14 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="label_7">
         <property name="text">
          <string>Sequence (fixed):</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="2" column="1">
        <widget class="qMRMLNodeComboBox" name="T1RegSequenceInputSelector">
         <property name="enabled">
          <bool>true</bool>
@@ -231,17 +231,81 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0" colspan="2">
+      <item row="6" column="0" colspan="2">
        <widget class="QPushButton" name="RegisterT1Button">
         <property name="text">
          <string>Register T1 to Sequence</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_8">
+        <property name="text">
+         <string>T1 Brain Mask</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="qMRMLNodeComboBox" name="T1RegBrainMaskSelector">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="nodeTypes">
+         <stringlist>
+          <string>vtkMRMLLabelMapVolumeNode</string>
+         </stringlist>
+        </property>
+        <property name="noneEnabled">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="qMRMLNodeComboBox" name="T1RegOutputTransformSelector">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="nodeTypes">
+         <stringlist>
+          <string>vtkMRMLLinearTransformNode</string>
+         </stringlist>
+        </property>
+        <property name="noneEnabled">
+         <bool>true</bool>
+        </property>
+        <property name="noneDisplay">
+         <string>Create new transform</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_9">
+        <property name="text">
+         <string>Output Transform</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label_10">
+        <property name="text">
+         <string>Registration Strategy</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
        <widget class="QCheckBox" name="HardenTransformCheckBox">
         <property name="text">
          <string>Harden transform</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QComboBox" name="RegistrationStrategyComboBox">
+        <property name="currentText">
+         <string/>
+        </property>
+        <property name="maxVisibleItems">
+         <number>10</number>
         </property>
        </widget>
       </item>
@@ -287,7 +351,7 @@
   <connection>
    <sender>PerfusionHelper</sender>
    <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
-   <receiver>inputSelector</receiver>
+   <receiver>GatherTagsInputSequenceSelector</receiver>
    <slot>setMRMLScene(vtkMRMLScene*)</slot>
    <hints>
     <hint type="sourcelabel">
@@ -361,6 +425,70 @@
     <hint type="destinationlabel">
      <x>292</x>
      <y>397</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>PerfusionHelper</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>InputRegisteredSequenceSelector</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>240</x>
+     <y>267</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>314</x>
+     <y>273</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>PerfusionHelper</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>OutputRegisteredSequenceSelector</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>240</x>
+     <y>267</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>314</x>
+     <y>299</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>PerfusionHelper</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>T1RegBrainMaskSelector</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>240</x>
+     <y>267</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>292</x>
+     <y>423</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>PerfusionHelper</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>T1RegOutputTransformSelector</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>240</x>
+     <y>267</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>292</x>
+     <y>459</y>
     </hint>
    </hints>
   </connection>
